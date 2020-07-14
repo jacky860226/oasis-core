@@ -1,0 +1,52 @@
+{
+    "params": {
+        "commission_schedule_rules": {
+            "rate_change_interval": 10,
+            "rate_bound_lead": 30,
+            "max_rate_steps": 4,
+            "max_bound_steps": 12
+        },
+        "thresholds": {
+            "entity": "0",
+            "node-validator": "0",
+            "node-compute": "0",
+            "node-storage": "0",
+            "node-keymanager": "0",
+            "runtime-compute": "0",
+            "runtime-keymanager": "0"
+        }
+    },
+    "total_supply": "10000000000",
+    "ledger": {
+        "oasis1qznshq4ttrgh83d9wqvgmsuq3pfsndg3tus7lx98": {
+            "general": {
+                "balance": "10000000000",
+                "nonce": 0
+            },
+            "escrow": {
+                "active": {
+                    "balance": "0",
+                    "total_shares": "0"
+                },
+                "debonding": {
+                    "balance": "0",
+                    "total_shares": "0"
+                },
+                "commission_schedule": {
+                    "rates": null,
+                    "bounds": null
+                },
+                "stake_accumulator": {}
+            }
+        }
+    },
+    "thresholds": {
+        "entity": "0",
+        "node-validator": "0",
+        "node-compute": "0",
+        "node-storage": "0",
+        "node-keymanager": "0",
+        "runtime-compute": "0",
+        "runtime-keymanager": "0"
+    }
+}
