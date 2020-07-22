@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
@@ -112,15 +113,22 @@ func (r *runtime) submitRuntimeRquest(ctx context.Context, rtc runtimeClient.Run
 		"request", req,
 	)
 
-	// Wait for a maximum of 30 seconds as invalid submissions may block
-	// forever.
-	submitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	out, err := rtc.SubmitTx(submitCtx, rtx)
+	// Retry in case a runtime node is just getting restarted.
+	sched := backoff.NewExponentialBackOff()
+	sched.MaxInterval = 120
+	sched.MaxElapsedTime = 10
+
+	var out []byte
+	err := backoff.Retry(func() (err error) {
+		out, err = rtc.SubmitTx(ctx, rtx)
+		r.logger.Error("submitting runtime request error",
+			"err", err,
+		)
+		return
+	}, backoff.WithContext(sched, ctx))
 	if err != nil {
-		cancel()
 		return nil, fmt.Errorf("failed to submit runtime transaction: %w", err)
 	}
-	cancel()
 
 	if err = cbor.Unmarshal(out, &rsp); err != nil {
 		return nil, fmt.Errorf("malformed tx output from runtime: %w", err)
