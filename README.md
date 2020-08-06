@@ -84,6 +84,12 @@ Prerequisites:
   sudo apt install bubblewrap gcc g++ protobuf-compiler make cmake libssl-dev libseccomp-dev
   ```
 
+* [clang-9] (for evmc-client).
+
+  ```
+  sudo apt install clang-9
+  ```
+
 * [Go] (at least version 1.14.3).
 
   If your distribution provides a new-enough version of Go, just use that.
@@ -431,3 +437,19 @@ For even more output, check the other `*.log` files.
 * `scripts`: Bash scripts for development.
 * `tests`: Runtimes, clients and resources used for E2E tests.
 * `tools`: Build tools.
+
+## Run test ssvm-evmc in runtime
+
+```
+$ cp ./tests/fib.wasm /
+$ cp ./tests/libssvm-evmc.so /
+$ chmod 777 /fib.wasm /libssvm-evmc.so
+$ ./go/oasis-net-runner/oasis-net-runner dump-fixture \
+  --fixture.default.node.binary go/oasis-node/oasis-node \
+  --fixture.default.runtime.binary target/default/debug/simple-keyvalue \
+  --fixture.default.runtime.loader target/default/debug/oasis-core-runtime-loader \
+  --fixture.default.keymanager.binary target/default/debug/simple-keymanager \
+  > fixture.json
+$ sed -i 's/"runtime_provisioner": ""/"runtime_provisioner": "unconfined"/' fixture.json
+$ ./go/oasis-net-runner/oasis-net-runner --fixture.file fixture.json
+```

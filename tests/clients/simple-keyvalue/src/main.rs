@@ -8,6 +8,8 @@ extern crate simple_keyvalue_api;
 extern crate tokio;
 
 use std::sync::Arc;
+use std::fs::File;
+use std::io::Read;
 
 use clap::{App, Arg};
 use grpcio::EnvBuilder;
@@ -24,6 +26,13 @@ use simple_keyvalue_api::{with_api, KeyValue};
 
 with_api! {
     create_txn_api_client!(SimpleKeyValueClient, api);
+}
+
+fn read_a_file(path: &str) -> std::io::Result<Vec<u8>> {
+	let mut file = File::open(path)?;
+	let mut data = Vec::new();
+	file.read_to_end(&mut data)?;
+	return Ok(data);
 }
 
 fn main() {
@@ -215,6 +224,22 @@ fn main() {
             txn.block_snapshot.block.header.round, txn.index, txn.input, txn.output
         );
     }
+
+    let file_path = "/fib.wasm";
+    match read_a_file(file_path) {
+		Ok(code) => {
+			let r: Option<String> = rt.block_on(kv_client.exec(code)).unwrap();
+            match r {
+                Some(val) => {
+                    println!("Got \"{}\"", val);
+                }
+                None => {
+                    println!("Error");
+                }
+            }
+		}
+		Err(e) => println!("Error load wasm file: {:?}, {:?}", file_path, e),
+	}
 
     println!("Simple key/value client finished.");
 }

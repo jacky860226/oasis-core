@@ -16,6 +16,9 @@ oasis-core-keymanager-client = { path = "../../../keymanager-client" }
 oasis-core-keymanager-api-common = { path = "../../../keymanager-api-common" }
 simple-keymanager = { path = "../simple-keymanager" }
 simple-keyvalue-api = { path = "./api" }
+hex = "0.4"
+cmake = "0.1.44"
+evmc-client = { git = "https://github.com/second-state/evmc", tag = "v6.3.1-rust-evmc-client-rc.2" }
 
 failure = "0.1.5"
 io-context = "0.2.0"

@@ -23,9 +23,124 @@ use oasis_core_runtime::{
 use simple_keymanager::trusted_policy_signers;
 use simple_keyvalue_api::{with_api, KeyValue};
 
+
+use std::collections::BTreeMap;
+use std::env;
+use evmc_client::{host::HostContext as HostInterface, load, EvmcVm, EvmcLoaderErrorCode, types::*};
+
+struct HostContext {
+    storage: BTreeMap<Bytes32, Bytes32>,
+}
+
+impl HostContext {
+    fn new() -> HostContext {
+        HostContext {
+            storage: BTreeMap::new(),
+        }
+    }
+}
+
+impl HostInterface for HostContext {
+	fn account_exists(&mut self, _addr: &Address) -> bool {
+		println!("Host: account_exists");
+		return true;
+	}
+	fn get_storage(&mut self, _addr: &Address, key: &Bytes32) -> Bytes32 {
+		println!("Host: get_storage");
+		let value = self.storage.get(key);
+		let ret: Bytes32;
+		match value {
+			Some(value) => ret = value.to_owned(),
+			None => ret = [0u8; BYTES32_LENGTH],
+		}
+		println!("{:?} -> {:?}", hex::encode(key), hex::encode(ret));
+		return ret;
+	}
+	fn set_storage(&mut self, _addr: &Address, key: &Bytes32, value: &Bytes32) -> StorageStatus {
+		println!("Host: set_storage");
+		println!("{:?} -> {:?}", hex::encode(key), hex::encode(value));
+		self.storage.insert(key.to_owned(), value.to_owned());
+		return StorageStatus::EVMC_STORAGE_MODIFIED;
+	}
+	fn get_balance(&mut self, _addr: &Address) -> Bytes32 {
+		println!("Host: get_balance");
+		return [0u8; BYTES32_LENGTH];
+	}
+	fn get_code_size(&mut self, _addr: &Address) -> usize {
+		println!("Host: get_code_size");
+		return 0;
+	}
+	fn get_code_hash(&mut self, _addr: &Address) -> Bytes32 {
+		println!("Host: get_code_hash");
+		return [0u8; BYTES32_LENGTH];
+	}
+	fn copy_code(
+		&mut self,
+		_addr: &Address,
+		_offset: &usize,
+		_buffer_data: &*mut u8,
+		_buffer_size: &usize,
+	) -> usize {
+		println!("Host: copy_code");
+		return 0;
+	}
+	fn selfdestruct(&mut self, _addr: &Address, _beneficiary: &Address) {
+		println!("Host: selfdestruct");
+	}
+	fn get_tx_context(&mut self) -> (Bytes32, Address, Address, i64, i64, i64, Bytes32) {
+		println!("Host: get_tx_context");
+		return (
+			[0u8; BYTES32_LENGTH],
+			[0u8; ADDRESS_LENGTH],
+			[0u8; ADDRESS_LENGTH],
+			0,
+			0,
+			0,
+			[0u8; BYTES32_LENGTH],
+		);
+	}
+	fn get_block_hash(&mut self, _number: i64) -> Bytes32 {
+		println!("Host: get_block_hash");
+		return [0u8; BYTES32_LENGTH];
+	}
+	fn emit_log(&mut self, _addr: &Address, _topics: &Vec<Bytes32>, _data: &[u8]) {
+		println!("Host: emit_log");
+	}
+	fn call(
+		&mut self,
+		_kind: CallKind,
+		_destination: &Address,
+		_sender: &Address,
+		_value: &Bytes32,
+		_input: &[u8],
+		_gas: i64,
+		_depth: i32,
+		_is_static: bool,
+	) -> (Vec<u8>, i64, Address, StatusCode) {
+		println!("Host: call");
+		return (
+			vec![0u8; BYTES32_LENGTH],
+			_gas,
+			[0u8; ADDRESS_LENGTH],
+			StatusCode::EVMC_SUCCESS,
+		);
+	}
+}
+
+impl Drop for HostContext {
+    fn drop(&mut self) {
+        println!("Dump storage:");
+        for (key, value) in &self.storage {
+            println!("{:?} -> {:?}", hex::encode(key), hex::encode(value));
+        }
+    }
+}
+
 struct Context {
     test_runtime_id: RuntimeId,
     km_client: Arc<dyn KeyManagerClient>,
+    vm: EvmcVm,
+    result: Result<EvmcLoaderErrorCode, &'static str>,
 }
 
 /// Return previously set runtime ID of this runtime.
@@ -134,6 +249,39 @@ fn enc_remove(args: &String, ctx: &mut TxnContext) -> Fallible<Option<String>> {
         enc_ctx.remove(mkvs, IoContext::create_child(&ctx.io_ctx), args.as_bytes())
     });
     Ok(existing.map(|v| String::from_utf8(v)).transpose()?)
+}
+
+// #[cfg(not(target_env = "sgx"))]
+fn exec(args: &Vec<u8>, ctx: &mut TxnContext) -> Fallible<Option<String>> {
+    if cfg!(target_env = "sgx") {
+        return Ok(Some("#[cfg(not(target_env = \"sgx\"))]".to_string()));
+    }
+    let rctx = runtime_context!(ctx, Context);
+    let code = args;
+	println!("result {:?}", rctx.result);
+    println!("Instantiate: {:?}", (rctx.vm.get_name(), rctx.vm.get_version()));
+    
+    let host_context = HostContext::new();
+    let (output, gas_left, status_code) = rctx.vm.execute(
+        Box::new(host_context),
+        Revision::EVMC_BYZANTIUM,
+        CallKind::EVMC_CALL,
+        false,
+        123,
+        50000000,
+        &[32u8; 20],
+        &[128u8; 20],
+        &[0u8; 0],
+        &[0u8; 32],
+        &code[..],
+        &[0u8; 32],
+    );
+    println!("Output:  {:?}", hex::encode(output));
+    println!("GasLeft: {:?}", gas_left);
+    println!("Status:  {:?}", status_code);
+    //_vm.destroy();
+
+    Ok(Some(format!("{}", hex::encode(output))))
 }
 
 /// A keyed storage encryption context, for use with a MKVS instance.
@@ -266,10 +414,18 @@ fn main() {
                 .expect("failed to update km client policy");
         })));
 
+        if cfg!(target_env = "sgx") {
+            return Some(Box::new(txn));
+        }
+
         txn.set_context_initializer(move |ctx: &mut TxnContext| {
+            let lib_path = "/libssvm-evmc.so";
+            let (_vm, _result) = load(lib_path);
             ctx.runtime = Box::new(Context {
                 test_runtime_id: rt_id.clone(),
                 km_client: initializer_km_client.clone(),
+                vm: _vm,
+                result: _result,
             })
         });
 

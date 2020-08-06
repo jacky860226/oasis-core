@@ -25,3 +25,5 @@ hfuzz_workspace
 # Coverage files.
 coverage-e2e-*.txt
 
+!libssvm-evmc.so
+!fib.wasm
